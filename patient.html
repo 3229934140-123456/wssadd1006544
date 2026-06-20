@@ -27,6 +27,14 @@
                 <p class="subtitle" id="treatmentInfo">正畸治疗 · 术后护理</p>
             </div>
 
+            <div class="tip-box">
+                <span class="emoji">📤</span>
+                <div class="content">
+                    <strong>打卡完成记得回传结果码</strong>
+                    <span>每次打卡后会生成 DH- 开头的结果码，复制发给诊所护士即可同步进度。异常情况诊所会主动联系你哦～</span>
+                </div>
+            </div>
+
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 14px; font-weight: 600;">护理进度</span>
@@ -74,9 +82,27 @@
                 </div>
             </div>
 
+            <div id="resultCodeSection" style="display: none;">
+                <div class="card" style="border-left: 4px solid var(--primary);">
+                    <div class="card-title">
+                        <span class="icon">�</span>
+                        回传给诊所的结果码
+                    </div>
+                    <p style="font-size: 13px; color: var(--text-light); margin-bottom: 12px;">
+                        请复制下方结果码，通过微信/短信发送给诊所护士即可同步你的打卡进度
+                    </p>
+                    <div class="link-box">
+                        <span class="link-text" id="resultCodeText" style="font-weight: 600; letter-spacing: 0.5px;"></span>
+                        <button class="btn-copy" id="copyResultBtn">复制结果码</button>
+                    </div>
+                    <div id="resultCodeHint" style="margin-top: 12px; font-size: 13px;">
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-title">
-                    <span class="icon">📋</span>
+                    <span class="icon">�📋</span>
                     全部护理任务
                 </div>
                 <div id="allTasks">
@@ -109,20 +135,39 @@
         let selectedFeedback = null;
         let reminderInterval = null;
 
-        function getCarePlanFromUrl() {
-            const id = getQueryParam('id');
-            if (!id) return null;
-            return getCarePlan(id);
+        const PLAN_STORAGE_PREFIX = 'patient_plan_';
+
+        function getStorageKey(planId) {
+            return PLAN_STORAGE_PREFIX + planId;
+        }
+
+        function loadPlanProgress(plan) {
+            try {
+                const saved = getFromStorage(getStorageKey(plan.id));
+                if (saved && saved.tasks) {
+                    plan.tasks = saved.tasks;
+                    plan.patientLoaded = true;
+                }
+            } catch (e) {}
+            return plan;
+        }
+
+        function savePlanProgress(plan) {
+            try {
+                saveToStorage(getStorageKey(plan.id), { tasks: plan.tasks });
+            } catch (e) {}
         }
 
         function init() {
-            carePlan = getCarePlanFromUrl();
-            
+            carePlan = getCarePlanFromUrlParams();
+
             if (!carePlan) {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('error').style.display = 'block';
                 return;
             }
+
+            carePlan = loadPlanProgress(carePlan);
 
             document.getElementById('loading').style.display = 'none';
             document.getElementById('content').style.display = 'block';
@@ -133,6 +178,7 @@
             renderCurrentTask();
             renderAllTasks();
             renderTimeline();
+            renderResultCode();
             initEmojiFeedback();
             
             startReminderCheck();
@@ -180,7 +226,6 @@
             document.getElementById('currentTaskDesc').textContent = currentTask.desc;
             document.getElementById('currentTaskTime').textContent = getTimeRemaining(new Date(currentTask.taskTime));
             
-            const criticalTasks = carePlan.tasks.filter(t => t.critical);
             if (currentTask.critical) {
                 document.getElementById('currentTaskIcon').textContent = '⚠️';
             } else {
@@ -196,7 +241,7 @@
             const container = document.getElementById('allTasks');
             container.innerHTML = '';
             
-            carePlan.tasks.forEach((task, index) => {
+            carePlan.tasks.forEach((task) => {
                 const status = getTaskStatus(task);
                 const card = document.createElement('div');
                 card.className = `task-card ${status}`;
@@ -293,7 +338,12 @@
             const currentTask = getCurrentTask(carePlan);
             if (!currentTask) return;
             
-            carePlan = updateTaskStatus(carePlan.id, currentTask.id, selectedFeedback);
+            carePlan = updateLocalPlanTask(carePlan, currentTask.id, selectedFeedback);
+            savePlanProgress(carePlan);
+
+            try {
+                updateTaskStatus(carePlan.id, currentTask.id, selectedFeedback);
+            } catch (e) {}
             
             showSubmitModal(currentTask, selectedFeedback);
             
@@ -302,18 +352,70 @@
             renderCurrentTask();
             renderAllTasks();
             renderTimeline();
+            renderResultCode();
+        }
+
+        function renderResultCode() {
+            const section = document.getElementById('resultCodeSection');
+            const completedCount = carePlan.tasks.filter(t => t.completed).length;
+            
+            if (completedCount === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            const resultCode = generateResultCode(carePlan);
+            document.getElementById('resultCodeText').textContent = resultCode;
+
+            const hasAbnormal = carePlan.tasks.some(t => t.completed && isAbnormalFeedback(t.feedback));
+            const hint = document.getElementById('resultCodeHint');
+            
+            if (hasAbnormal) {
+                hint.innerHTML = `
+                    <div style="padding: 10px; background: var(--danger-light); border-radius: 8px; color: var(--danger);">
+                        ⚠️ 检测到异常反馈，诊所医护人员会尽快联系你。请放心，也可直接拨打上方电话。
+                    </div>
+                `;
+            } else if (completedCount === carePlan.tasks.length) {
+                hint.innerHTML = `
+                    <div style="padding: 10px; background: var(--success-light); border-radius: 8px; color: var(--success);">
+                        🎉 太棒了！所有护理任务已完成，把结果码发给诊所就大功告成啦～
+                    </div>
+                `;
+            } else {
+                hint.innerHTML = `
+                    <div style="padding: 10px; background: var(--warning-light); border-radius: 8px; color: #B7791F;">
+                        ✨ 已完成 ${completedCount}/${carePlan.tasks.length} 项任务。你可以随时复制此结果码发给诊所，后续打卡会生成新的结果码。
+                    </div>
+                `;
+            }
+        }
+
+        function copyResultCode() {
+            const code = document.getElementById('resultCodeText').textContent;
+            copyToClipboard(code).then(() => {
+                const btn = document.getElementById('copyResultBtn');
+                btn.textContent = '已复制 ✓';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '复制结果码';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
         }
 
         function showSubmitModal(task, feedbackId) {
             const feedback = FEEDBACK_OPTIONS.find(f => f.id === feedbackId);
             const isAbnormal = isAbnormalFeedback(feedbackId);
+            const resultCode = generateResultCode(carePlan);
             
             let title, emoji, desc;
             
             if (isAbnormal) {
-                title = '感谢反馈！';
+                title = '感谢反馈，我们会联系你！';
                 emoji = '🙏';
-                desc = `我们已收到你的反馈（${feedback.emoji} ${feedback.label}），诊所医护人员会尽快联系你。`;
+                desc = `已收到你的反馈（${feedback.emoji} ${feedback.label}），诊所医护人员看到结果码后会尽快联系你。`;
             } else {
                 title = '打卡成功！';
                 emoji = '🎉';
@@ -326,13 +428,34 @@
                 <div class="modal">
                     <div class="emoji">${emoji}</div>
                     <h2>${title}</h2>
-                    <p>${desc}</p>
+                    <p style="margin-bottom: 16px;">${desc}</p>
+                    
+                    <div style="text-align: left; background: var(--bg); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">📤 回传结果码（发给诊所）</div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span style="flex: 1; font-size: 12px; font-family: monospace; color: var(--text-light); word-break: break-all;">${resultCode}</span>
+                            <button class="btn-copy" id="modalCopyBtn" style="flex-shrink: 0;">复制</button>
+                        </div>
+                    </div>
+                    
                     <div class="modal-buttons">
                         <button class="btn btn-primary" id="modalOk">好的</button>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
+            
+            document.getElementById('modalCopyBtn').addEventListener('click', () => {
+                copyToClipboard(resultCode).then(() => {
+                    const btn = document.getElementById('modalCopyBtn');
+                    btn.textContent = '已复制 ✓';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = '复制';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            });
             
             document.getElementById('modalOk').addEventListener('click', () => {
                 modal.remove();
@@ -346,7 +469,6 @@
         function startReminderCheck() {
             checkTaskReminders(carePlan);
             reminderInterval = setInterval(() => {
-                carePlan = getCarePlan(carePlan.id);
                 checkTaskReminders(carePlan);
                 renderCurrentTask();
                 renderAllTasks();
@@ -356,6 +478,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             init();
             document.getElementById('submitBtn').addEventListener('click', submitTask);
+            document.getElementById('copyResultBtn').addEventListener('click', copyResultCode);
         });
 
         window.addEventListener('beforeunload', () => {

@@ -35,6 +35,22 @@
             </div>
         </div>
 
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">📥</span>
+                导入患者结果码
+            </div>
+            <p style="font-size: 13px; color: var(--text-light); margin-bottom: 12px;">
+                患者完成打卡后会生成 DH- 开头的结果码，粘贴到此处即可同步打卡结果。异常反馈自动标红进入待回访。
+            </p>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" class="form-input" id="resultCodeInput" placeholder="粘贴 DH- 开头的结果码" style="flex: 1;">
+                <button class="btn btn-primary" id="importBtn" style="width: auto; padding: 12px 20px;">
+                    导入
+                </button>
+            </div>
+        </div>
+
         <div class="nav-tabs">
             <div class="nav-tab active" data-filter="all">
                 <span>📋</span> 全部
@@ -149,9 +165,10 @@
                 const statusColor = feedback.reviewed ? 'var(--text-light)' : (isAbnormal ? 'var(--danger)' : 'var(--success)');
                 
                 const carePlan = getCarePlan(feedback.carePlanId);
+                const treatment = carePlan ? null : TREATMENT_TYPES[feedback.treatmentType];
+                const totalCount = carePlan ? carePlan.tasks.length : (treatment ? treatment.tasks.length : '-');
+                const completedCount = carePlan ? carePlan.tasks.filter(t => t.completed).length : '-';
                 const task = carePlan ? carePlan.tasks.find(t => t.id === feedback.taskId) : null;
-                const completedCount = carePlan ? carePlan.tasks.filter(t => t.completed).length : 0;
-                const totalCount = carePlan ? carePlan.tasks.length : 0;
                 
                 card.innerHTML = `
                     <div class="feedback-header">
@@ -192,11 +209,30 @@
             
             const content = document.getElementById('detailContent');
             
-            let tasksHtml = '';
+            let tasksToShow = [];
             if (carePlan) {
-                carePlan.tasks.forEach(task => {
+                tasksToShow = carePlan.tasks;
+            } else {
+                const treatment = TREATMENT_TYPES[feedback.treatmentType];
+                if (treatment) {
+                    const startTime = new Date();
+                    tasksToShow = buildCarePlanTasks(feedback.treatmentType, startTime);
+                    const feedbacksForPlan = getAllFeedbacks().filter(f => f.carePlanId === feedback.carePlanId);
+                    tasksToShow.forEach(task => {
+                        const matchFb = feedbacksForPlan.find(f => f.taskId === task.id);
+                        if (matchFb) {
+                            task.completed = true;
+                            task.feedback = matchFb.feedback;
+                            task.feedbackTime = matchFb.feedbackTime;
+                        }
+                    });
+                }
+            }
+
+            let tasksHtml = '';
+            if (tasksToShow.length > 0) {
+                tasksToShow.forEach(task => {
                     const taskFeedback = task.feedback ? FEEDBACK_OPTIONS.find(f => f.id === task.feedback) : null;
-                    const statusClass = task.completed ? 'completed' : 'pending';
                     const statusText = task.completed ? '✓' : '○';
                     const feedbackText = taskFeedback ? `${taskFeedback.emoji} ${taskFeedback.label}` : '';
                     
@@ -222,6 +258,8 @@
                         </div>
                     `;
                 });
+            } else {
+                tasksHtml = '<div style="color: var(--text-light); font-size: 13px;">无法获取护理计划详情</div>';
             }
             
             content.innerHTML = `
@@ -331,6 +369,32 @@
                 renderFeedbackList();
                 showToast('已刷新');
             });
+
+            document.getElementById('importBtn').addEventListener('click', handleImport);
+        }
+
+        function handleImport() {
+            const input = document.getElementById('resultCodeInput');
+            const code = input.value.trim();
+            if (!code) {
+                showToast('请输入结果码');
+                return;
+            }
+
+            const result = importResultCode(code);
+            if (result.success) {
+                renderOverview();
+                renderFeedbackList();
+                input.value = '';
+                
+                if (result.abnormalCount > 0) {
+                    showToast(`导入成功！${result.patientName} 含${result.abnormalCount}条异常反馈 🚨`);
+                } else {
+                    showToast(`导入成功！${result.patientName} 的${result.newCount}条记录已同步 ✓`);
+                }
+            } else {
+                showToast('导入失败：' + (result.message || '结果码格式无效'));
+            }
         }
 
         document.addEventListener('DOMContentLoaded', init);

@@ -14,6 +14,14 @@
             <p class="subtitle">轻松生成专属护理提醒，提升患者配合度</p>
         </div>
 
+        <div class="tip-box">
+            <span class="emoji">💡</span>
+            <div class="content">
+                <strong>轻量跨设备方案</strong>
+                <span>生成的链接自带护理计划数据，患者手机打开即可用。完成打卡后患者会获得结果码，粘贴到下方或反馈页即可同步到诊所端。</span>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-title">
                 <span class="icon">👤</span>
@@ -46,26 +54,51 @@
                     专属链接已生成
                 </div>
                 <p style="font-size: 14px; color: var(--text-light); margin-bottom: 12px;">
-                    请将以下链接发送给患者，让他们通过手机访问打卡
+                    请将以下链接发送给患者（微信/短信），链接包含完整护理计划，任意设备打开均可使用
                 </p>
                 <div class="link-box">
                     <span class="link-text" id="linkText"></span>
                     <button class="btn-copy" id="copyBtn">复制链接</button>
                 </div>
-                <button class="btn btn-secondary" id="openPatientBtn" style="margin-top: 12px;">
-                    <span>👁️</span>
-                    预览患者页面
-                </button>
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button class="btn btn-secondary" id="openPatientBtn" style="flex: 1;">
+                        <span>👁️</span>
+                        预览患者页面
+                    </button>
+                </div>
             </div>
         </div>
 
+        <div class="card" style="margin-top: 20px;">
+            <div class="card-title">
+                <span class="icon">�</span>
+                导入患者结果码
+            </div>
+            <p style="font-size: 13px; color: var(--text-light); margin-bottom: 12px;">
+                患者完成打卡后会生成 DH- 开头的结果码，粘贴到此处即可同步打卡结果
+            </p>
+            <div class="form-group">
+                <label class="form-label" for="resultCodeInput">结果码</label>
+                <input type="text" class="form-input" id="resultCodeInput" placeholder="粘贴 DH- 开头的结果码">
+            </div>
+            <button class="btn btn-primary" id="importBtn">
+                <span>📥</span>
+                导入结果
+            </button>
+        </div>
+
         <div class="nav-tabs">
-            <div class="nav-tab" id="navGenerate">
+            <div class="nav-tab active" id="navGenerate">
                 <span>➕</span> 生成链接
             </div>
             <div class="nav-tab" id="navFeedback">
                 <span>📋</span> 反馈查看
             </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal-overlay" style="display: none;">
+        <div class="modal" id="importModalContent">
         </div>
     </div>
 
@@ -113,7 +146,7 @@
             if (!selectedTreatment || !patientName) return;
 
             generatedPlan = createCarePlan(selectedTreatment, patientName);
-            const link = generatePatientLink(generatedPlan.id);
+            const link = generatePatientLink(generatedPlan);
             
             document.getElementById('linkText').textContent = link;
             document.getElementById('linkResult').style.display = 'block';
@@ -128,7 +161,10 @@
                 <div class="modal">
                     <div class="emoji">🎉</div>
                     <h2>链接生成成功！</h2>
-                    <p>已为 ${generatedPlan.patientName} 生成${generatedPlan.treatmentName}护理计划</p>
+                    <p style="margin-bottom: 12px;">已为 <strong>${generatedPlan.patientName}</strong> 生成${generatedPlan.treatmentName}护理计划</p>
+                    <p style="font-size: 13px; color: var(--text-light);">
+                        链接已包含护理计划数据，发送给患者后任意设备均可打开
+                    </p>
                     <div class="modal-buttons">
                         <button class="btn btn-secondary" id="modalClose">知道了</button>
                     </div>
@@ -160,8 +196,84 @@
 
         function openPatientPage() {
             if (generatedPlan) {
-                window.open(generatePatientLink(generatedPlan.id), '_blank');
+                window.open(generatePatientLink(generatedPlan), '_blank');
             }
+        }
+
+        function handleImport() {
+            const code = document.getElementById('resultCodeInput').value.trim();
+            if (!code) {
+                showImportResult(false, '请输入结果码');
+                return;
+            }
+
+            const result = importResultCode(code);
+            showImportResult(result.success, result);
+            document.getElementById('resultCodeInput').value = '';
+        }
+
+        function showImportResult(success, data) {
+            const modal = document.getElementById('importModal');
+            const content = document.getElementById('importModalContent');
+
+            let html = '';
+            if (success) {
+                const icon = data.hasAbnormal ? '🚨' : '✅';
+                const title = data.hasAbnormal ? '导入成功 - 含异常反馈' : '导入成功';
+                html = `
+                    <div class="emoji">${icon}</div>
+                    <h2>${title}</h2>
+                    <p style="margin-bottom: 12px;">
+                        <strong>${data.patientName}</strong> · ${data.treatmentName}
+                    </p>
+                    <div style="text-align: left; background: var(--bg); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="color: var(--text-light);">打卡任务数</span>
+                            <span style="font-weight: 600;">${data.totalCount} 项</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="color: var(--text-light);">新增记录</span>
+                            <span style="font-weight: 600;">${data.newCount} 条</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-light);">异常反馈</span>
+                            <span style="font-weight: 600; color: ${data.abnormalCount > 0 ? 'var(--danger)' : 'var(--success)'};">
+                                ${data.abnormalCount} 条 ${data.abnormalCount > 0 ? '（待回访）' : ''}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary" id="importModalClose">关闭</button>
+                        <button class="btn btn-primary" id="importModalGo">查看反馈</button>
+                    </div>
+                `;
+            } else {
+                html = `
+                    <div class="emoji">😕</div>
+                    <h2>导入失败</h2>
+                    <p>${typeof data === 'string' ? data : (data.message || '结果码格式无效，请检查后重试')}</p>
+                    <div class="modal-buttons">
+                        <button class="btn btn-primary" id="importModalClose">知道了</button>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = html;
+            modal.style.display = 'flex';
+
+            document.getElementById('importModalClose').addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            if (success && document.getElementById('importModalGo')) {
+                document.getElementById('importModalGo').addEventListener('click', () => {
+                    window.location.href = 'feedback.html';
+                });
+            }
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.style.display = 'none';
+            });
         }
 
         function initDemoDataIfNeeded() {
@@ -176,6 +288,7 @@
             document.getElementById('generateBtn').addEventListener('click', generateLink);
             document.getElementById('copyBtn').addEventListener('click', copyLink);
             document.getElementById('openPatientBtn').addEventListener('click', openPatientPage);
+            document.getElementById('importBtn').addEventListener('click', handleImport);
             
             document.getElementById('navGenerate').classList.add('active');
             document.getElementById('navFeedback').addEventListener('click', () => {

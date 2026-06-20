@@ -3,57 +3,31 @@ const TREATMENT_TYPES = {
         name: '正畸治疗',
         emoji: '🦷',
         tasks: [
-            {
-                id: 1, title: '2小时内不进食', desc: '麻药未退前避免咬伤唇颊', timeOffset: 2, unit: '小时',
-        },
-            {
-                id: 2, title: '24小时内不刷手术区', desc: '避免刺激伤口，其他牙齿正常刷', timeOffset: 24, unit: '小时',
-            },
-            {
-                id: 3, title: '按时服用止痛药', desc: '如有疼痛，按医嘱服用', timeOffset: 6, unit: '小时',
-            },
-            {
-                id: 4, title: '异常出血及时联系', desc: '持续出血请立即联系诊所', timeOffset: 1, unit: '小时', critical: true,
-            },
+            { id: 1, title: '2小时内不进食', desc: '麻药未退前避免咬伤唇颊', timeOffset: 2, unit: '小时' },
+            { id: 2, title: '24小时内不刷手术区', desc: '避免刺激伤口，其他牙齿正常刷', timeOffset: 24, unit: '小时' },
+            { id: 3, title: '按时服用止痛药', desc: '如有疼痛，按医嘱服用', timeOffset: 6, unit: '小时' },
+            { id: 4, title: '异常出血及时联系', desc: '持续出血请立即联系诊所', timeOffset: 1, unit: '小时', critical: true },
         ],
     },
     extraction: {
         name: '拔牙',
         emoji: '🪥',
         tasks: [
-            {
-                id: 1, title: '咬紧止血棉30分钟', desc: '咬紧棉球帮助止血', timeOffset: 0.5, unit: '小时',
-            },
-            {
-                id: 2, title: '2小时内不进食', desc: '麻药消退前避免进食', timeOffset: 2, unit: '小时',
-            },
-            {
-                id: 3, title: '24小时内不漱口', desc: '避免冲掉血凝块', timeOffset: 24, unit: '小时',
-            },
-            {
-                id: 4, title: '按时服用止痛药', desc: '疼痛时按医嘱服药', timeOffset: 6, unit: '小时',
-            },
-            {
-                id: 5, title: '异常出血及时联系', desc: '持续出血请立即联系', timeOffset: 1, unit: '小时', critical: true,
-            },
+            { id: 1, title: '咬紧止血棉30分钟', desc: '咬紧棉球帮助止血', timeOffset: 0.5, unit: '小时' },
+            { id: 2, title: '2小时内不进食', desc: '麻药消退前避免进食', timeOffset: 2, unit: '小时' },
+            { id: 3, title: '24小时内不漱口', desc: '避免冲掉血凝块', timeOffset: 24, unit: '小时' },
+            { id: 4, title: '按时服用止痛药', desc: '疼痛时按医嘱服药', timeOffset: 6, unit: '小时' },
+            { id: 5, title: '异常出血及时联系', desc: '持续出血请立即联系', timeOffset: 1, unit: '小时', critical: true },
         ],
     },
     cleaning: {
         name: '洁牙',
         emoji: '✨',
         tasks: [
-            {
-                id: 1, title: '2小时内不进食', desc: '避免冷热刺激', timeOffset: 2, unit: '小时',
-            },
-            {
-                id: 2, title: '24小时内避免染色食物', desc: '避免咖啡、茶、红酒等', timeOffset: 24, unit: '小时',
-            },
-            {
-                id: 3, title: '使用抗敏感牙膏', desc: '如有酸痛可使用', timeOffset: 2, unit: '小时',
-            },
-            {
-                id: 4, title: '持续酸痛及时联系', desc: '异常不适请联系', timeOffset: 24, unit: '小时', critical: true,
-            },
+            { id: 1, title: '2小时内不进食', desc: '避免冷热刺激', timeOffset: 2, unit: '小时' },
+            { id: 2, title: '24小时内避免染色食物', desc: '避免咖啡、茶、红酒等', timeOffset: 24, unit: '小时' },
+            { id: 3, title: '使用抗敏感牙膏', desc: '如有酸痛可使用', timeOffset: 2, unit: '小时' },
+            { id: 4, title: '持续酸痛及时联系', desc: '异常不适请联系', timeOffset: 24, unit: '小时', critical: true },
         ],
     },
 };
@@ -64,6 +38,18 @@ const FEEDBACK_OPTIONS = [
     { id: 'severe_pain', emoji: '😣', label: '明显疼' },
     { id: 'bleeding', emoji: '🩸', label: '持续出血' },
 ];
+
+function utf8ToB64(str) {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+}
+
+function b64ToUtf8(b64) {
+    try {
+        return decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+    } catch (e) {
+        return null;
+    }
+}
 
 function generateId() {
     return Math.random().toString(36).substring(2, 10);
@@ -92,20 +78,26 @@ function isAbnormalFeedback(feedback) {
 }
 
 function saveToStorage(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
+    try {
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+        console.warn('localStorage not available:', e);
+    }
 }
 
 function getFromStorage(key) {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
+    try {
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+    } catch (e) {
+        return null;
+    }
 }
 
-function createCarePlan(treatmentType, patientName) {
+function buildCarePlanTasks(treatmentType, startTime) {
     const treatment = TREATMENT_TYPES[treatmentType];
-    const id = generateId();
-    const startTime = new Date();
-    
-    const tasks = treatment.tasks.map(task => {
+    if (!treatment) return [];
+    return treatment.tasks.map(task => {
         const taskTime = new Date(startTime.getTime() + task.timeOffset * 60 * 60 * 1000);
         return {
             ...task,
@@ -116,7 +108,16 @@ function createCarePlan(treatmentType, patientName) {
             feedbackTime: null,
         };
     });
-    
+}
+
+function createCarePlan(treatmentType, patientName) {
+    const treatment = TREATMENT_TYPES[treatmentType];
+    if (!treatment) return null;
+
+    const id = generateId();
+    const startTime = new Date();
+    const tasks = buildCarePlanTasks(treatmentType, startTime);
+
     const carePlan = {
         id,
         treatmentType,
@@ -127,12 +128,55 @@ function createCarePlan(treatmentType, patientName) {
         tasks,
         createdAt: new Date().toISOString(),
     };
-    
-    const allPlans = getFromStorage('carePlans') || [];
-    allPlans.push(carePlan);
-    saveToStorage('carePlans', allPlans);
-    
+
+    try {
+        const allPlans = getFromStorage('carePlans') || [];
+        allPlans.push(carePlan);
+        saveToStorage('carePlans', allPlans);
+    } catch (e) {}
+
     return carePlan;
+}
+
+function encodeCarePlanForUrl(carePlan) {
+    const compact = {
+        v: 1,
+        id: carePlan.id,
+        t: carePlan.treatmentType,
+        n: carePlan.patientName,
+        s: carePlan.startTime,
+    };
+    return utf8ToB64(JSON.stringify(compact));
+}
+
+function decodeCarePlanFromUrl(encodedData) {
+    try {
+        const json = b64ToUtf8(encodedData);
+        if (!json) return null;
+        const compact = JSON.parse(json);
+        if (!compact || !compact.t || !compact.n || !compact.s) return null;
+
+        const treatment = TREATMENT_TYPES[compact.t];
+        if (!treatment) return null;
+
+        const startTime = new Date(compact.s);
+        const tasks = buildCarePlanTasks(compact.t, startTime);
+
+        return {
+            id: compact.id || generateId(),
+            treatmentType: compact.t,
+            treatmentName: treatment.name,
+            treatmentEmoji: treatment.emoji,
+            patientName: compact.n,
+            startTime: compact.s,
+            tasks,
+            createdAt: compact.s,
+            fromUrl: true,
+        };
+    } catch (e) {
+        console.error('Failed to decode care plan from URL:', e);
+        return null;
+    }
 }
 
 function getCarePlan(id) {
@@ -140,45 +184,181 @@ function getCarePlan(id) {
     return allPlans.find(p => p.id === id);
 }
 
+function getCarePlanFromUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const encodedData = params.get('data');
+    if (encodedData) {
+        return decodeCarePlanFromUrl(encodedData);
+    }
+    const id = params.get('id');
+    if (id) {
+        return getCarePlan(id);
+    }
+    return null;
+}
+
 function updateTaskStatus(carePlanId, taskId, feedback) {
-    const allPlans = getFromStorage('carePlans') || [];
+    let plan = null;
+    let allPlans = getFromStorage('carePlans') || [];
     const planIndex = allPlans.findIndex(p => p.id === carePlanId);
-    if (planIndex === -1) return null;
-    
-    const plan = allPlans[planIndex];
+
+    if (planIndex !== -1) {
+        plan = allPlans[planIndex];
+        const taskIndex = plan.tasks.findIndex(t => t.id === taskId);
+        if (taskIndex !== -1) {
+            plan.tasks[taskIndex].completed = true;
+            plan.tasks[taskIndex].status = 'completed';
+            plan.tasks[taskIndex].feedback = feedback;
+            plan.tasks[taskIndex].feedbackTime = new Date().toISOString();
+            allPlans[planIndex] = plan;
+            saveToStorage('carePlans', allPlans);
+            saveFeedback(plan, plan.tasks[taskIndex]);
+        }
+    }
+
+    return plan;
+}
+
+function updateLocalPlanTask(plan, taskId, feedback) {
     const taskIndex = plan.tasks.findIndex(t => t.id === taskId);
-    if (taskIndex === -1) return null;
-    
+    if (taskIndex === -1) return plan;
     plan.tasks[taskIndex].completed = true;
     plan.tasks[taskIndex].status = 'completed';
     plan.tasks[taskIndex].feedback = feedback;
     plan.tasks[taskIndex].feedbackTime = new Date().toISOString();
-    
-    allPlans[planIndex] = plan;
-    saveToStorage('carePlans', allPlans);
-    
-    saveFeedback(plan, plan.tasks[taskIndex]);
-    
     return plan;
 }
 
 function saveFeedback(plan, task) {
-    const feedbacks = getFromStorage('feedbacks') || [];
-    const feedback = {
-        id: generateId(),
-        carePlanId: plan.id,
-        patientName: plan.patientName,
-        treatmentType: plan.treatmentType,
-        treatmentName: plan.treatmentName,
-        taskId: task.id,
-        taskTitle: task.title,
-        feedback: task.feedback,
-        isAbnormal: isAbnormalFeedback(task.feedback),
-        feedbackTime: task.feedbackTime,
-        reviewed: false,
+    try {
+        const feedbacks = getFromStorage('feedbacks') || [];
+        const feedback = {
+            id: generateId(),
+            carePlanId: plan.id,
+            patientName: plan.patientName,
+            treatmentType: plan.treatmentType,
+            treatmentName: plan.treatmentName,
+            taskId: task.id,
+            taskTitle: task.title,
+            feedback: task.feedback,
+            isAbnormal: isAbnormalFeedback(task.feedback),
+            feedbackTime: task.feedbackTime,
+            reviewed: false,
+        };
+        feedbacks.unshift(feedback);
+        saveToStorage('feedbacks', feedbacks);
+    } catch (e) {}
+}
+
+function generateResultCode(plan) {
+    const completedTasks = plan.tasks.filter(t => t.completed).map(t => ({
+        i: t.id,
+        f: t.feedback,
+        ft: t.feedbackTime,
+    }));
+
+    const hasAbnormal = plan.tasks.some(t => t.completed && isAbnormalFeedback(t.feedback));
+
+    const result = {
+        v: 1,
+        id: plan.id,
+        t: plan.treatmentType,
+        n: plan.patientName,
+        s: plan.startTime,
+        ts: completedTasks,
+        a: hasAbnormal,
+        g: new Date().toISOString(),
     };
-    feedbacks.unshift(feedback);
-    saveToStorage('feedbacks', feedbacks);
+
+    const encoded = utf8ToB64(JSON.stringify(result));
+    return 'DH-' + encoded;
+}
+
+function parseResultCode(resultCode) {
+    try {
+        let code = resultCode.trim();
+        if (code.startsWith('DH-') || code.startsWith('dh-')) {
+            code = code.substring(3);
+        }
+        const json = b64ToUtf8(code);
+        if (!json) return null;
+        const parsed = JSON.parse(json);
+        if (!parsed || !parsed.t || !parsed.n || !parsed.ts) return null;
+
+        const treatment = TREATMENT_TYPES[parsed.t];
+        if (!treatment) return null;
+
+        const feedbackList = [];
+        const startTime = new Date(parsed.s);
+
+        parsed.ts.forEach(tf => {
+            const taskDef = treatment.tasks.find(x => x.id === tf.i);
+            if (taskDef && tf.f) {
+                feedbackList.push({
+                    id: generateId(),
+                    carePlanId: parsed.id,
+                    patientName: parsed.n,
+                    treatmentType: parsed.t,
+                    treatmentName: treatment.name,
+                    taskId: tf.i,
+                    taskTitle: taskDef.title,
+                    feedback: tf.f,
+                    isAbnormal: isAbnormalFeedback(tf.f),
+                    feedbackTime: tf.ft,
+                    reviewed: false,
+                    fromResultCode: true,
+                });
+            }
+        });
+
+        return {
+            planId: parsed.id,
+            patientName: parsed.n,
+            treatmentType: parsed.t,
+            treatmentName: treatment.name,
+            startTime: parsed.s,
+            generatedAt: parsed.g,
+            hasAbnormal: parsed.a,
+            feedbacks: feedbackList,
+        };
+    } catch (e) {
+        console.error('Failed to parse result code:', e);
+        return null;
+    }
+}
+
+function importResultCode(resultCode) {
+    const parsed = parseResultCode(resultCode);
+    if (!parsed) return { success: false, message: '结果码格式无效' };
+
+    const existing = getFromStorage('feedbacks') || [];
+    let newCount = 0;
+    let abnormalCount = 0;
+
+    parsed.feedbacks.forEach(fb => {
+        const isDup = existing.some(e =>
+            e.carePlanId === fb.carePlanId &&
+            e.taskId === fb.taskId &&
+            e.feedback === fb.feedback
+        );
+        if (!isDup) {
+            existing.unshift(fb);
+            newCount++;
+            if (fb.isAbnormal) abnormalCount++;
+        }
+    });
+
+    saveToStorage('feedbacks', existing);
+
+    return {
+        success: true,
+        newCount,
+        abnormalCount,
+        totalCount: parsed.feedbacks.length,
+        patientName: parsed.patientName,
+        treatmentName: parsed.treatmentName,
+        hasAbnormal: parsed.hasAbnormal,
+    };
 }
 
 function getAllFeedbacks() {
@@ -216,8 +396,7 @@ function getNextTip(plan) {
     if (incompleteTasks.length === 0) {
         return { emoji: '🎉', title: '太棒了！', desc: '你已完成所有护理任务，继续保持良好的口腔卫生！' };
     }
-    
-    const nextTask = incompleteTasks[0];
+
     const tips = {
         braces: [
             { emoji: '💧', title: '小提示', desc: '避免用前牙啃咬硬物，如苹果、骨头等。' },
@@ -235,7 +414,7 @@ function getNextTip(plan) {
             { emoji: '💧', title: '定期检查', desc: '建议每半年进行一次口腔检查。' },
         ],
     };
-    
+
     const treatmentTips = tips[plan.treatmentType] || tips.braces;
     return treatmentTips[Math.floor(Math.random() * treatmentTips.length)];
 }
@@ -255,11 +434,11 @@ function requestNotificationPermission() {
 function checkTaskReminders(plan) {
     const now = new Date();
     const currentTask = getCurrentTask(plan);
-    
+
     if (currentTask) {
         const taskTime = new Date(currentTask.taskTime);
         const timeDiff = taskTime - now;
-        
+
         if (timeDiff > 0 && timeDiff < 5 * 60 * 1000) {
             showNotification(
                 '⏰ 护理提醒',
@@ -277,8 +456,9 @@ function getBaseUrl() {
     return window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
 }
 
-function generatePatientLink(planId) {
-    return `${getBaseUrl()}patient.html?id=${planId}`;
+function generatePatientLink(plan) {
+    const encodedData = encodeCarePlanForUrl(plan);
+    return `${getBaseUrl()}patient.html?data=${encodeURIComponent(encodedData)}`;
 }
 
 function getQueryParam(name) {
@@ -308,9 +488,11 @@ function getAbnormalCount() {
 
 function initDemoData() {
     if (!getFromStorage('carePlans')) {
-        const demoPlan = createCarePlan('braces', '演示用户');
-        setTimeout(() => {
-            updateTaskStatus(demoPlan.id, 1, 'no_pain');
-        }, 100);
+        try {
+            const demoPlan = createCarePlan('braces', '演示用户');
+            setTimeout(() => {
+                updateTaskStatus(demoPlan.id, 1, 'no_pain');
+            }, 100);
+        } catch (e) {}
     }
 }
