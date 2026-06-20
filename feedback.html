@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>患者反馈查看 - 诊所端</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">📋</div>
+            <h1>患者反馈中心</h1>
+            <p class="subtitle">查看患者打卡反馈，异常情况及时回访</p>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">📊</span>
+                反馈概览
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center;">
+                <div style="background: var(--bg); border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 24px; font-weight: 700; color: var(--primary);" id="totalCount">0</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">总反馈数</div>
+                </div>
+                <div style="background: var(--bg); border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 24px; font-weight: 700; color: var(--danger);" id="abnormalCount">0</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">待处理异常</div>
+                </div>
+                <div style="background: var(--bg); border-radius: 12px; padding: 16px;">
+                    <div style="font-size: 24px; font-weight: 700; color: var(--success);" id="normalCount">0</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">正常恢复</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <div class="nav-tab active" data-filter="all">
+                <span>📋</span> 全部
+            </div>
+            <div class="nav-tab" data-filter="abnormal">
+                <span>🚨</span> 异常
+            </div>
+            <div class="nav-tab" data-filter="pending">
+                <span>⏳</span> 待回访
+            </div>
+        </div>
+
+        <div id="feedbackList">
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="emoji">📭</div>
+            <p>暂无患者反馈</p>
+            <p style="font-size: 13px; margin-top: 8px;">生成护理计划后，患者打卡会在这里显示</p>
+        </div>
+
+        <div class="nav-tabs" style="margin-top: 20px;">
+            <div class="nav-tab" id="navGenerate">
+                <span>➕</span> 生成链接
+            </div>
+            <div class="nav-tab active" id="navFeedback">
+                <span>📋</span> 反馈查看
+            </div>
+        </div>
+    </div>
+
+    <div id="detailModal" class="modal-overlay" style="display: none;">
+        <div class="modal" style="max-width: 440px; text-align: left;">
+            <div class="card-title" style="margin-bottom: 16px;">
+                <span class="icon">🔍</span>
+                反馈详情
+            </div>
+            <div id="detailContent">
+            </div>
+            <div class="modal-buttons" style="margin-top: 20px;">
+                <button class="btn btn-secondary" id="closeDetailBtn">关闭</button>
+                <button class="btn btn-primary" id="markReviewedBtn">标记已回访</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="floating-btn" id="refreshBtn" title="刷新">🔄</button>
+
+    <script src="js/app.js"></script>
+    <script>
+        let currentFilter = 'all';
+        let selectedFeedbackId = null;
+
+        function init() {
+            renderOverview();
+            renderFeedbackList();
+            bindEvents();
+        }
+
+        function renderOverview() {
+            const feedbacks = getAllFeedbacks();
+            const total = feedbacks.length;
+            const abnormal = feedbacks.filter(f => f.isAbnormal && !f.reviewed).length;
+            const normal = feedbacks.filter(f => !f.isAbnormal).length;
+            
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('abnormalCount').textContent = abnormal;
+            document.getElementById('normalCount').textContent = normal;
+        }
+
+        function getFilteredFeedbacks() {
+            let feedbacks = getAllFeedbacks();
+            
+            switch (currentFilter) {
+                case 'abnormal':
+                    feedbacks = feedbacks.filter(f => f.isAbnormal);
+                    break;
+                case 'pending':
+                    feedbacks = feedbacks.filter(f => !f.reviewed);
+                    break;
+            }
+            
+            return feedbacks;
+        }
+
+        function renderFeedbackList() {
+            const feedbacks = getFilteredFeedbacks();
+            const container = document.getElementById('feedbackList');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (feedbacks.length === 0) {
+                container.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            container.innerHTML = '';
+            
+            feedbacks.forEach(feedback => {
+                const feedbackOption = FEEDBACK_OPTIONS.find(f => f.id === feedback.feedback);
+                const isAbnormal = feedback.isAbnormal;
+                
+                const card = document.createElement('div');
+                card.className = `feedback-card ${isAbnormal && !feedback.reviewed ? 'abnormal' : ''}`;
+                card.style.cursor = 'pointer';
+                
+                const badgeClass = isAbnormal ? 'abnormal' : 'normal';
+                const badgeText = isAbnormal ? '需回访' : '正常';
+                
+                const statusText = feedback.reviewed ? '已回访' : (isAbnormal ? '待回访' : '无需回访');
+                const statusColor = feedback.reviewed ? 'var(--text-light)' : (isAbnormal ? 'var(--danger)' : 'var(--success)');
+                
+                const carePlan = getCarePlan(feedback.carePlanId);
+                const task = carePlan ? carePlan.tasks.find(t => t.id === feedback.taskId) : null;
+                const completedCount = carePlan ? carePlan.tasks.filter(t => t.completed).length : 0;
+                const totalCount = carePlan ? carePlan.tasks.length : 0;
+                
+                card.innerHTML = `
+                    <div class="feedback-header">
+                        <div class="feedback-patient">
+                            <span>👤</span>
+                            <span>${feedback.patientName}</span>
+                            <span class="feedback-badge ${badgeClass}">${badgeText}</span>
+                        </div>
+                        <div class="feedback-time">${formatDate(new Date(feedback.feedbackTime))}</div>
+                    </div>
+                    <div class="feedback-treatment">
+                        ${feedback.treatmentName} · ${feedback.taskTitle}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="font-size: 24px;">${feedbackOption ? feedbackOption.emoji : '❓'}</span>
+                        <span style="font-weight: 500;">${feedbackOption ? feedbackOption.label : '未知'}</span>
+                    </div>
+                    <div class="feedback-tasks">
+                        <span class="task-tag completed">已完成 ${completedCount}/${totalCount}</span>
+                        <span class="task-tag" style="color: ${statusColor};">${statusText}</span>
+                    </div>
+                    ${isAbnormal && !feedback.reviewed ? `
+                        <div class="feedback-note">
+                            ⚠️ 患者反馈${feedbackOption ? feedbackOption.label : '异常'}，请尽快回访
+                        </div>
+                    ` : ''}
+                `;
+                
+                card.addEventListener('click', () => showDetail(feedback));
+                container.appendChild(card);
+            });
+        }
+
+        function showDetail(feedback) {
+            selectedFeedbackId = feedback.id;
+            const feedbackOption = FEEDBACK_OPTIONS.find(f => f.id === feedback.feedback);
+            const carePlan = getCarePlan(feedback.carePlanId);
+            
+            const content = document.getElementById('detailContent');
+            
+            let tasksHtml = '';
+            if (carePlan) {
+                carePlan.tasks.forEach(task => {
+                    const taskFeedback = task.feedback ? FEEDBACK_OPTIONS.find(f => f.id === task.feedback) : null;
+                    const statusClass = task.completed ? 'completed' : 'pending';
+                    const statusText = task.completed ? '✓' : '○';
+                    const feedbackText = taskFeedback ? `${taskFeedback.emoji} ${taskFeedback.label}` : '';
+                    
+                    tasksHtml += `
+                        <div style="padding: 12px; background: var(--bg); border-radius: 8px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-weight: 500;">
+                                    <span style="color: ${task.completed ? 'var(--success)' : 'var(--text-light)'};">${statusText}</span>
+                                    ${task.title}
+                                </div>
+                                <span style="font-size: 12px; color: var(--text-light);">
+                                    ${formatTime(new Date(task.taskTime))}
+                                </span>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+                                ${task.desc}
+                            </div>
+                            ${feedbackText ? `
+                                <div style="font-size: 13px; margin-top: 8px; color: var(--text);">
+                                    反馈：${feedbackText}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+            }
+            
+            content.innerHTML = `
+                <div style="margin-bottom: 16px; padding: 16px; background: var(--bg); border-radius: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="font-size: 28px;">${feedbackOption ? feedbackOption.emoji : '❓'}</span>
+                        <div>
+                            <div style="font-weight: 600;">${feedbackOption ? feedbackOption.label : '未知'}</div>
+                            <div style="font-size: 12px; color: var(--text-light);">
+                                ${formatDate(new Date(feedback.feedbackTime))}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 14px; color: var(--text-light);">
+                        👤 ${feedback.patientName} · ${feedback.treatmentName}
+                    </div>
+                    <div style="font-size: 14px; color: var(--text-light); margin-top: 4px;">
+                        📋 ${feedback.taskTitle}
+                    </div>
+                    ${feedback.isAbnormal ? `
+                        <div style="margin-top: 12px; padding: 10px; background: var(--danger-light); border-radius: 8px; color: var(--danger); font-size: 13px;">
+                            ⚠️ 此反馈为异常情况，请尽快回访患者
+                        </div>
+                    ` : ''}
+                    ${feedback.reviewed ? `
+                        <div style="margin-top: 12px; padding: 10px; background: var(--success-light); border-radius: 8px; color: var(--success); font-size: 13px;">
+                            ✓ 已标记为回访完成
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div style="font-weight: 600; margin-bottom: 12px;">📋 全部护理任务</div>
+                ${tasksHtml}
+            `;
+            
+            const markBtn = document.getElementById('markReviewedBtn');
+            markBtn.style.display = feedback.reviewed ? 'none' : 'flex';
+            
+            document.getElementById('detailModal').style.display = 'flex';
+        }
+
+        function closeDetail() {
+            document.getElementById('detailModal').style.display = 'none';
+            selectedFeedbackId = null;
+        }
+
+        function markAsReviewed() {
+            if (!selectedFeedbackId) return;
+            
+            markFeedbackAsReviewed(selectedFeedbackId);
+            renderOverview();
+            renderFeedbackList();
+            closeDetail();
+            
+            showToast('已标记为回访完成 ✓');
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--success);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 2000;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+                animation: toastIn 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'toastOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 2000);
+        }
+
+        function bindEvents() {
+            document.querySelectorAll('.nav-tab[data-filter]').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.nav-tab[data-filter]').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentFilter = tab.dataset.filter;
+                    renderFeedbackList();
+                });
+            });
+            
+            document.getElementById('navGenerate').addEventListener('click', () => {
+                window.location.href = 'index.html';
+            });
+            
+            document.getElementById('closeDetailBtn').addEventListener('click', closeDetail);
+            document.getElementById('markReviewedBtn').addEventListener('click', markAsReviewed);
+            
+            document.getElementById('detailModal').addEventListener('click', (e) => {
+                if (e.target.id === 'detailModal') closeDetail();
+            });
+            
+            document.getElementById('refreshBtn').addEventListener('click', () => {
+                renderOverview();
+                renderFeedbackList();
+                showToast('已刷新');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+    
+    <style>
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+        
+        @keyframes toastOut {
+            from {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+        }
+    </style>
+</body>
+</html>

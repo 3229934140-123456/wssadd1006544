@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>术后护理打卡 - 患者端</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div id="loading" style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+            <p>正在加载护理计划...</p>
+        </div>
+
+        <div id="error" style="display: none; text-align: center; padding: 60px 20px;">
+            <div style="font-size: 64px; margin-bottom: 16px;">😕</div>
+            <h2 style="font-size: 20px; margin-bottom: 8px;">找不到护理计划</h2>
+            <p style="color: var(--text-light); margin-bottom: 20px;">请检查链接是否正确，或联系诊所获取新链接</p>
+            <button class="btn btn-primary" onclick="window.location.href='index.html'">返回诊所端</button>
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="header">
+                <div class="logo" id="treatmentLogo">🦷</div>
+                <h1 id="patientGreeting">你好，患者朋友</h1>
+                <p class="subtitle" id="treatmentInfo">正畸治疗 · 术后护理</p>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 14px; font-weight: 600;">护理进度</span>
+                    <span style="font-size: 14px; color: var(--text-light);" id="progressText">0/0</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                </div>
+                <p class="progress-text" id="progressTip">加油！完成所有任务就能更快恢复哦 💪</p>
+            </div>
+
+            <div class="tip-box" id="tipBox">
+                <span class="emoji">💡</span>
+                <div class="content">
+                    <strong id="tipTitle">小提示</strong>
+                    <span id="tipDesc">保持良好的护理习惯，恢复更快速！</span>
+                </div>
+            </div>
+
+            <div id="currentTaskSection" style="display: none;">
+                <div class="card">
+                    <div class="card-title">
+                        <span class="icon">⏰</span>
+                        当前待打卡任务
+                    </div>
+                    <div class="task-card current" id="currentTaskCard">
+                        <div class="task-header">
+                            <div class="task-title">
+                                <span id="currentTaskIcon">📌</span>
+                                <span id="currentTaskTitle">任务名称</span>
+                            </div>
+                            <span class="task-time" id="currentTaskTime">已到时间</span>
+                        </div>
+                        <p class="task-desc" id="currentTaskDesc">任务描述</p>
+                        
+                        <p style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">现在感觉怎么样？</p>
+                        <div class="emoji-feedback" id="emojiFeedback">
+                        </div>
+                        
+                        <button class="btn btn-success" id="submitBtn" disabled>
+                            <span>✅</span>
+                            完成打卡
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">📋</span>
+                    全部护理任务
+                </div>
+                <div id="allTasks">
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">🗺️</span>
+                    恢复时间线
+                </div>
+                <div class="timeline" id="timeline">
+                </div>
+            </div>
+
+            <div class="card" style="text-align: center;">
+                <p style="font-size: 13px; color: var(--text-light); margin-bottom: 8px;">
+                    📞 如有紧急情况，请联系诊所
+                </p>
+                <p style="font-size: 16px; font-weight: 600; color: var(--primary);">
+                    400-888-8888
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        let carePlan = null;
+        let selectedFeedback = null;
+        let reminderInterval = null;
+
+        function getCarePlanFromUrl() {
+            const id = getQueryParam('id');
+            if (!id) return null;
+            return getCarePlan(id);
+        }
+
+        function init() {
+            carePlan = getCarePlanFromUrl();
+            
+            if (!carePlan) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+            
+            renderPatientInfo();
+            renderProgress();
+            renderTip();
+            renderCurrentTask();
+            renderAllTasks();
+            renderTimeline();
+            initEmojiFeedback();
+            
+            startReminderCheck();
+            requestNotificationPermission();
+        }
+
+        function renderPatientInfo() {
+            document.getElementById('treatmentLogo').textContent = carePlan.treatmentEmoji;
+            document.getElementById('patientGreeting').textContent = `你好，${carePlan.patientName} 👋`;
+            document.getElementById('treatmentInfo').textContent = `${carePlan.treatmentName} · 术后护理`;
+        }
+
+        function renderProgress() {
+            const progress = getProgress(carePlan);
+            document.getElementById('progressText').textContent = `${progress.completed}/${progress.total}`;
+            document.getElementById('progressFill').style.width = `${progress.percentage}%`;
+            
+            if (progress.percentage === 100) {
+                document.getElementById('progressTip').textContent = '太棒了！你已完成所有护理任务 🎉';
+            } else if (progress.percentage >= 50) {
+                document.getElementById('progressTip').textContent = '已经完成一半了，继续加油！💪';
+            } else {
+                document.getElementById('progressTip').textContent = '新的护理计划开始啦，一起加油！✨';
+            }
+        }
+
+        function renderTip() {
+            const tip = getNextTip(carePlan);
+            document.getElementById('tipBox').querySelector('.emoji').textContent = tip.emoji;
+            document.getElementById('tipTitle').textContent = tip.title;
+            document.getElementById('tipDesc').textContent = tip.desc;
+        }
+
+        function renderCurrentTask() {
+            const currentTask = getCurrentTask(carePlan);
+            const section = document.getElementById('currentTaskSection');
+            
+            if (!currentTask) {
+                section.style.display = 'none';
+                return;
+            }
+            
+            section.style.display = 'block';
+            document.getElementById('currentTaskTitle').textContent = currentTask.title;
+            document.getElementById('currentTaskDesc').textContent = currentTask.desc;
+            document.getElementById('currentTaskTime').textContent = getTimeRemaining(new Date(currentTask.taskTime));
+            
+            const criticalTasks = carePlan.tasks.filter(t => t.critical);
+            if (currentTask.critical) {
+                document.getElementById('currentTaskIcon').textContent = '⚠️';
+            } else {
+                document.getElementById('currentTaskIcon').textContent = '📌';
+            }
+            
+            selectedFeedback = null;
+            document.getElementById('submitBtn').disabled = true;
+            updateEmojiSelection();
+        }
+
+        function renderAllTasks() {
+            const container = document.getElementById('allTasks');
+            container.innerHTML = '';
+            
+            carePlan.tasks.forEach((task, index) => {
+                const status = getTaskStatus(task);
+                const card = document.createElement('div');
+                card.className = `task-card ${status}`;
+                
+                let statusHtml = '';
+                if (status === 'completed') {
+                    const feedback = FEEDBACK_OPTIONS.find(f => f.id === task.feedback);
+                    statusHtml = `
+                        <div class="task-status">
+                            <span>✓ 已完成</span>
+                            ${feedback ? `<span>${feedback.emoji} ${feedback.label}</span>` : ''}
+                        </div>
+                    `;
+                } else if (status === 'current') {
+                    statusHtml = `<div style="color: var(--warning); font-size: 13px; font-weight: 500;">⏰ 待打卡</div>`;
+                } else {
+                    statusHtml = `<div style="color: var(--text-light); font-size: 13px;">🕐 ${getTimeRemaining(new Date(task.taskTime))}</div>`;
+                }
+                
+                card.innerHTML = `
+                    <div class="task-header">
+                        <div class="task-title">
+                            <span>${task.critical ? '⚠️' : '📌'}</span>
+                            <span>${task.title}</span>
+                        </div>
+                        <span class="task-time">${formatTime(new Date(task.taskTime))}</span>
+                    </div>
+                    <p class="task-desc">${task.desc}</p>
+                    ${statusHtml}
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function renderTimeline() {
+            const container = document.getElementById('timeline');
+            container.innerHTML = '';
+            
+            carePlan.tasks.forEach(task => {
+                const status = getTaskStatus(task);
+                const item = document.createElement('div');
+                item.className = `timeline-item ${status}`;
+                
+                const feedback = FEEDBACK_OPTIONS.find(f => f.id === task.feedback);
+                let feedbackHtml = '';
+                if (feedback) {
+                    feedbackHtml = `<div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">反馈：${feedback.emoji} ${feedback.label}</div>`;
+                }
+                
+                item.innerHTML = `
+                    <div class="timeline-time">${formatTime(new Date(task.taskTime))}</div>
+                    <div class="timeline-title">${task.title}</div>
+                    <div class="timeline-desc">${task.desc}</div>
+                    ${feedbackHtml}
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+
+        function initEmojiFeedback() {
+            const container = document.getElementById('emojiFeedback');
+            container.innerHTML = '';
+            
+            FEEDBACK_OPTIONS.forEach(option => {
+                const div = document.createElement('div');
+                div.className = 'emoji-option';
+                div.dataset.feedback = option.id;
+                div.innerHTML = `
+                    <div class="emoji">${option.emoji}</div>
+                    <div class="label">${option.label}</div>
+                `;
+                div.addEventListener('click', () => selectFeedback(option.id));
+                container.appendChild(div);
+            });
+        }
+
+        function selectFeedback(feedbackId) {
+            selectedFeedback = feedbackId;
+            updateEmojiSelection();
+            document.getElementById('submitBtn').disabled = false;
+        }
+
+        function updateEmojiSelection() {
+            document.querySelectorAll('.emoji-option').forEach(option => {
+                option.classList.toggle('selected', option.dataset.feedback === selectedFeedback);
+            });
+        }
+
+        function submitTask() {
+            if (!selectedFeedback) return;
+            
+            const currentTask = getCurrentTask(carePlan);
+            if (!currentTask) return;
+            
+            carePlan = updateTaskStatus(carePlan.id, currentTask.id, selectedFeedback);
+            
+            showSubmitModal(currentTask, selectedFeedback);
+            
+            renderProgress();
+            renderTip();
+            renderCurrentTask();
+            renderAllTasks();
+            renderTimeline();
+        }
+
+        function showSubmitModal(task, feedbackId) {
+            const feedback = FEEDBACK_OPTIONS.find(f => f.id === feedbackId);
+            const isAbnormal = isAbnormalFeedback(feedbackId);
+            
+            let title, emoji, desc;
+            
+            if (isAbnormal) {
+                title = '感谢反馈！';
+                emoji = '🙏';
+                desc = `我们已收到你的反馈（${feedback.emoji} ${feedback.label}），诊所医护人员会尽快联系你。`;
+            } else {
+                title = '打卡成功！';
+                emoji = '🎉';
+                desc = `太棒了！${feedback.emoji} ${feedback.label}，继续保持，你做得很好！`;
+            }
+            
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal">
+                    <div class="emoji">${emoji}</div>
+                    <h2>${title}</h2>
+                    <p>${desc}</p>
+                    <div class="modal-buttons">
+                        <button class="btn btn-primary" id="modalOk">好的</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            document.getElementById('modalOk').addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
+        }
+
+        function startReminderCheck() {
+            checkTaskReminders(carePlan);
+            reminderInterval = setInterval(() => {
+                carePlan = getCarePlan(carePlan.id);
+                checkTaskReminders(carePlan);
+                renderCurrentTask();
+                renderAllTasks();
+            }, 60000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            document.getElementById('submitBtn').addEventListener('click', submitTask);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (reminderInterval) {
+                clearInterval(reminderInterval);
+            }
+        });
+    </script>
+</body>
+</html>

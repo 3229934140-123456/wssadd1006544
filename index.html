@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>牙科术后护理 - 诊所端</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🦷</div>
+            <h1>术后护理助手</h1>
+            <p class="subtitle">轻松生成专属护理提醒，提升患者配合度</p>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">👤</span>
+                患者信息
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="patientName">患者姓名</label>
+                <input type="text" class="form-input" id="patientName" placeholder="请输入患者姓名" maxlength="20">
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">💉</span>
+                选择治疗类型
+            </div>
+            <div class="treatment-options" id="treatmentOptions">
+            </div>
+        </div>
+
+        <button class="btn btn-primary" id="generateBtn" disabled>
+            <span>✨</span>
+            生成护理提醒链接
+        </button>
+
+        <div id="linkResult" style="display: none;">
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">🔗</span>
+                    专属链接已生成
+                </div>
+                <p style="font-size: 14px; color: var(--text-light); margin-bottom: 12px;">
+                    请将以下链接发送给患者，让他们通过手机访问打卡
+                </p>
+                <div class="link-box">
+                    <span class="link-text" id="linkText"></span>
+                    <button class="btn-copy" id="copyBtn">复制链接</button>
+                </div>
+                <button class="btn btn-secondary" id="openPatientBtn" style="margin-top: 12px;">
+                    <span>👁️</span>
+                    预览患者页面
+                </button>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <div class="nav-tab" id="navGenerate">
+                <span>➕</span> 生成链接
+            </div>
+            <div class="nav-tab" id="navFeedback">
+                <span>📋</span> 反馈查看
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        let selectedTreatment = null;
+        let generatedPlan = null;
+
+        function initTreatmentOptions() {
+            const container = document.getElementById('treatmentOptions');
+            container.innerHTML = '';
+            
+            Object.entries(TREATMENT_TYPES).forEach(([key, treatment]) => {
+                const card = document.createElement('div');
+                card.className = 'treatment-card';
+                card.dataset.type = key;
+                card.innerHTML = `
+                    <div class="emoji">${treatment.emoji}</div>
+                    <div class="name">${treatment.name}</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+                        ${treatment.tasks.length}项护理任务
+                    </div>
+                `;
+                card.addEventListener('click', () => selectTreatment(key));
+                container.appendChild(card);
+            });
+        }
+
+        function selectTreatment(type) {
+            selectedTreatment = type;
+            document.querySelectorAll('.treatment-card').forEach(card => {
+                card.classList.toggle('selected', card.dataset.type === type);
+            });
+            checkGenerateButton();
+        }
+
+        function checkGenerateButton() {
+            const btn = document.getElementById('generateBtn');
+            const name = document.getElementById('patientName').value.trim();
+            btn.disabled = !selectedTreatment || !name;
+        }
+
+        function generateLink() {
+            const patientName = document.getElementById('patientName').value.trim();
+            if (!selectedTreatment || !patientName) return;
+
+            generatedPlan = createCarePlan(selectedTreatment, patientName);
+            const link = generatePatientLink(generatedPlan.id);
+            
+            document.getElementById('linkText').textContent = link;
+            document.getElementById('linkResult').style.display = 'block';
+            
+            showSuccessModal();
+        }
+
+        function showSuccessModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal">
+                    <div class="emoji">🎉</div>
+                    <h2>链接生成成功！</h2>
+                    <p>已为 ${generatedPlan.patientName} 生成${generatedPlan.treatmentName}护理计划</p>
+                    <div class="modal-buttons">
+                        <button class="btn btn-secondary" id="modalClose">知道了</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            document.getElementById('modalClose').addEventListener('click', () => {
+                modal.remove();
+            });
+            
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
+        }
+
+        function copyLink() {
+            const link = document.getElementById('linkText').textContent;
+            copyToClipboard(link).then(() => {
+                const btn = document.getElementById('copyBtn');
+                btn.textContent = '已复制 ✓';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '复制链接';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        function openPatientPage() {
+            if (generatedPlan) {
+                window.open(generatePatientLink(generatedPlan.id), '_blank');
+            }
+        }
+
+        function initDemoDataIfNeeded() {
+            initDemoData();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initTreatmentOptions();
+            initDemoDataIfNeeded();
+            
+            document.getElementById('patientName').addEventListener('input', checkGenerateButton);
+            document.getElementById('generateBtn').addEventListener('click', generateLink);
+            document.getElementById('copyBtn').addEventListener('click', copyLink);
+            document.getElementById('openPatientBtn').addEventListener('click', openPatientPage);
+            
+            document.getElementById('navGenerate').classList.add('active');
+            document.getElementById('navFeedback').addEventListener('click', () => {
+                window.location.href = 'feedback.html';
+            });
+
+            requestNotificationPermission();
+        });
+    </script>
+</body>
+</html>
